@@ -36,12 +36,11 @@
     },
     "customData": {
             "type": "string",
-            "defaultValue": "#!/bin/bash\nwget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb\ndpkg -i packages-microsoft-prod.deb\nrm packages-microsoft-prod.deb\napt-get update && apt-get install -y dotnet-sdk-6.0\napt-get update && apt-get install -y aspnetcore-runtime-6.0"
-
+            "defaultValue": ""
         },
     "customData2": {
       "type": "string",
-            "defaultValue": "#!/bin/bash\napt-get update\napt-get install nginx -y"
+            "defaultValue": ""  
     }
   },
   
@@ -50,8 +49,8 @@
     "vNetAddressPrefixes": "10.0.0.0/16",
     "vNetSubnetName": "default",
     "vNetSubnetAddressPrefix": "10.0.0.0/24",
-    "vmName": "[concat(parameters('projectName'), '-vm')]",
-    "publicIPAddressName": "[concat(parameters('projectName'), '-ip')]",
+    "vmName": "[concat(parameters('projectName'))]",
+    "publicIPAddressName": "[concat(parameters('projectName'), 'IP')]",
     "networkInterfaceName": "[concat(parameters('projectName'), '-nic')]",
     "networkSecurityGroupName2": "[concat(variables('vNetSubnetName'), '-nsg')]"
   },
@@ -73,7 +72,7 @@
     {
     "apiVersion": "2017-10-01",
     "type": "Microsoft.Network/applicationSecurityGroups",
-    "name": "AppserverASG",
+    "name": "AppServerASG",
     "location": "[resourceGroup().location]",
     "properties": {}
     },
@@ -92,7 +91,7 @@
     {
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2020-05-01",
-      "name": "OscarsBastionIP",
+      "name": "BastionIP",
       "location": "[parameters('location')]",
       "properties": {
         "publicIPAllocationMethod": "Dynamic"
@@ -104,7 +103,7 @@
     {
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2020-05-01",
-      "name": "OscarProxy-ip",
+      "name": "ProxyIP",
       "location": "[parameters('location')]",
       "properties": {
         "publicIPAllocationMethod": "Dynamic"
@@ -119,38 +118,109 @@
       "apiVersion": "2020-05-01",
       "name": "[variables('networkSecurityGroupName2')]",
       "location": "[parameters('location')]",
+      "dependsOn":[
+        "[resourceId('Microsoft.Network/applicationSecurityGroups', 'BastionASG')]",
+        "[resourceId('Microsoft.Network/applicationSecurityGroups', 'AppServerASG')]",
+        "[resourceId('Microsoft.Network/applicationSecurityGroups', 'ProxyASG')]"
+      ],
       "properties": {
         "securityRules": [
           {
-            "name": "default-allow-22",
+            "name": "allow-80-to-Proxy",
             "properties": {
-              "priority": 1000,
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
               "access": "Allow",
+              "priority": 130,
+              "sourceAddressPrefix":"Internet",
+              "direction": "Inbound",
+              "destinationApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'ProxyASG')]"
+                }
+              ]
+            }
+          },
+          {
+            "name": "Deny-ssh",
+            "properties": {
+              "priority": 999,
+              "access": "Deny",
               "direction": "Inbound",
               "destinationPortRange": "22",
-              "protocol": "Tcp",
+              "protocol": "*",
               "sourceAddressPrefix": "*",
               "sourcePortRange": "*",
               "destinationAddressPrefix": "*"
             }
           },
           {
-            "name": "http",
+            "name": "allow-ssh-from-bastion-to-asgs",
             "properties": {
-              "priority": 999,
-              "access": "Allow",
-              "direction": "Inbound",
-              "destinationPortRange": "80",
-              "protocol": "Tcp",
-              "sourceAddressPrefix": "*",
+              "protocol": "*",
               "sourcePortRange": "*",
-              "destinationAddressPrefix": "*"
+              "destinationPortRange": "22",
+              "access": "Allow",
+              "priority": 200,
+              "direction": "Inbound",
+              "sourceApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'BastionASG')]"
+                }
+              ],
+              "destinationApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'AppServerASG')]"
+                },
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups','ProxyASG')]"
+                }
+              ]
+            }
+          },
+          {
+            "name": "allow-from-proxy-to-appserver",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "5000",
+              "access": "Allow",
+              "priority": 250,
+              "direction": "Inbound",
+              "sourceApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'ProxyASG')]"
+                }
+              ],
+              "destinationApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'AppServerASG')]"
+                }
+              ]
+            }
+          },
+          {
+            "name": "allow-ssh-from-internet-to-bastion",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "access": "Allow",
+              "priority": 120,
+              "sourceAddressPrefix":"Internet",
+              "direction": "Inbound",
+              
+              "destinationApplicationSecurityGroups": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups', 'BastionASG')]"
+                }
+              ]
             }
           }
         ]
       }
     },
-    
     {
       "type": "Microsoft.Network/virtualNetworks",
       "apiVersion": "2020-05-01",
@@ -204,7 +274,7 @@
               },
               "applicationSecurityGroups": [
                 {
-                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups','AppserverASG')]"
+                  "id": "[resourceId('Microsoft.Network/applicationSecurityGroups','AppServerASG')]"
                 }
               ]
             }
@@ -218,7 +288,7 @@
       "name": "ReverseProxy-nic",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/publicIPAddresses', 'OscarProxy-ip')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', 'ProxyIP')]",
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
         "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName2'))]",
         "[resourceId('Microsoft.Network/applicationSecurityGroups','ProxyASG')]"
@@ -231,7 +301,7 @@
               "privateIPAllocationMethod": "Static",
               "privateIPAddress":"10.0.0.6",
               "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'OscarProxy-ip')]"
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'ProxyIP')]"
               },
               "subnet": {
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNetName'), variables('vNetSubnetName'))]"
@@ -252,7 +322,7 @@
       "name": "BastionHost-nic",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/publicIPAddresses', 'OscarsBastionIP')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', 'BastionIP')]",
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
         "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName2'))]",
         "[resourceId('Microsoft.Network/applicationSecurityGroups','BastionASG')]"
@@ -265,7 +335,7 @@
               "privateIPAllocationMethod": "Static",
               "privateIPAddress":"10.0.0.7",
               "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'OscarsBastionIP')]"
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'BastionIP')]"
               },
               "subnet": {
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNetName'), variables('vNetSubnetName'))]"
@@ -323,7 +393,7 @@
         "networkProfile": {
           "networkInterfaces": [
             {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'ReverseProxy-nic')]"
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
             }
           ]
         }
@@ -342,7 +412,7 @@
           "vmSize": "[parameters('vmSize')]"
         },
         "osProfile": {
-          "computerName": "[variables('vmName')]",
+          "computerName": "Proxy",
           "adminUsername": "[parameters('adminUsername')]",
           "linuxConfiguration": {
             "disablePasswordAuthentication": true,
@@ -372,7 +442,7 @@
         "networkProfile": {
           "networkInterfaces": [
             {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'ReverseProxy-nic')]"
             }
           ]
         }
