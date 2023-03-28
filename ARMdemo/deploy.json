@@ -10,13 +10,14 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "[resourceGroup().location]",
+      "defaultValue": "northeurope",
       "metadata": {
         "description": "Specifies the location for all resources."
       }
     },
     "adminUsername": {
       "type": "string",
+      "defaultValue": "azureuser",
       "metadata": {
         "description": "Specifies a username for the Virtual Machine."
       }
@@ -45,14 +46,14 @@
   },
   
   "variables": {
-    "vNetName": "[concat(parameters('projectName'), '-vnet')]",
+    "vNetName": "Oscars-vnet",
     "vNetAddressPrefixes": "10.0.0.0/16",
-    "vNetSubnetName": "default",
+    "vNetSubnetName": "Oscars-subvnet",
     "vNetSubnetAddressPrefix": "10.0.0.0/24",
-    "vmName": "[concat(parameters('projectName'))]",
-    "publicIPAddressName": "[concat(parameters('projectName'), 'IP')]",
-    "networkInterfaceName": "[concat(parameters('projectName'), '-nic')]",
-    "networkSecurityGroupName2": "[concat(variables('vNetSubnetName'), '-nsg')]"
+    "vmName": "AppServer",
+    "publicIPAddressName": "AppServerIP",
+    "networkInterfaceName": "AppServer-nic",
+    "networkSecurityGroupName2": "Oscars-nsg"
   },
   "resources": [
     {
@@ -79,7 +80,7 @@
     {
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2020-05-01",
-      "name": "[variables('publicIPAddressName')]",
+      "name": "AppServerIP",
       "location": "[parameters('location')]",
       "properties": {
         "publicIPAllocationMethod": "Dynamic"
@@ -224,7 +225,7 @@
     {
       "type": "Microsoft.Network/virtualNetworks",
       "apiVersion": "2020-05-01",
-      "name": "[variables('vNetName')]",
+      "name": "Oscars-vnet",
       "location": "[parameters('location')]",
       "dependsOn": [
         "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName2'))]"
@@ -237,7 +238,7 @@
         },
         "subnets": [
           {
-            "name": "[variables('vNetSubnetName')]",
+            "name": "Oscars-subvnet",
             "properties": {
               "addressPrefix": "[variables('vNetSubnetAddressPrefix')]",
               "networkSecurityGroup": {
@@ -267,7 +268,7 @@
               "privateIPAllocationMethod": "Static",
               "privateIPAddress":"10.0.0.5",
               "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'AppServerIP')]"
               },
               "subnet": {
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNetName'), variables('vNetSubnetName'))]"
